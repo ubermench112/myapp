@@ -1,52 +1,76 @@
 pipeline {
-    agent any
+  agent any
 
-    stages {
-        stage('Checkout') {
-            steps {
-                git branch: 'main', url: 'https://github.com/ubermench112/myapp.git'
-            }
-        }
+  environment {
+    SUBDIR        = "myapp"            // your app lives here
+    IMG           = "myapp"            // docker image name
+    CONTAINER     = "myapp"            // docker container name
+    HOST_PORT     = "8081"             // host port to expose
+    APP_PORT      = "5000"             // Flask port inside container
+    // Full path to python installed for your Windows user:
+    PY            = "C:\\Users\\91762\\AppData\\Local\\Programs\\Python\\Python312\\python.exe"
+  }
 
-        stage('Build') {
-            steps {
-                echo 'Installing Python dependencies...'
-                bat '''
-                python -m venv venv
-                call venv\\Scripts\\activate
-                pip install --upgrade pip
-                pip install -r requirements.txt
-                '''
-            }
-        }
-
-        stage('Test') {
-            steps {
-                echo 'Running tests...'
-                bat '''
-                call venv\\Scripts\\activate
-                pytest || echo "No tests found, skipping..."
-                '''
-            }
-        }
-
-        stage('Docker Build') {
-            steps {
-                echo 'Building Docker image...'
-                bat 'docker build -t myapp .'
-            }
-        }
-
-        stage('Deploy') {
-            steps {
-                echo 'Deploying the application in Docker...'
-                bat '''
-                docker stop myapp-container || echo "No container to stop"
-                docker rm myapp-container || echo "No container to remove"
-                docker run -d -p 5000:5000 --name myapp-container myapp
-                '''
-            }
-        }
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
     }
-}
 
+    stage('Install Python deps (venv)') {
+      steps {
+        dir("${SUBDIR}") {
+          bat """
+          "%PY%" -m venv venv
+          call venv\\Scripts\\activate
+          python -m pip install --upgrade pip
+          if exist requirements.txt ( pip install -r requirements.txt ) else ( echo No requirements.txt found )
+          """
+        }
+      }
+    }
+
+    stage('Smoke Test') {
+      steps {
+        dir("${SUBDIR}") {
+          bat """
+          call venv\\Scripts\\activate
+          python - <<PYCODE
+print('✅ Python is working inside Jenkins')
+PYCODE
+          """
+        }
+      }
+    }
+
+    stage('Docker Build') {
+      steps {
+        dir("${SUBDIR}") {
+          bat """
+          docker build -t %IMG%:%BUILD_NUMBER% -t %IMG%:latest .
+          """
+        }
+      }
+    }
+
+    stage('Deploy (run container)') {
+      steps {
+        bat """
+        for /f "tokens=*" %%i in ('docker ps -aq -f name=%CONTAINER%') do docker rm -f %%i
+        docker run -d --name %CONTAINER% -p %HOST_PORT%:%APP_PORT% %IMG%:latest
+        """
+      }
+    }
+  }
+
+  post {
+    success {
+      echo "🎉 Deployed! Visit: http://localhost:${HOST_PORT}"
+      bat 'docker ps'
+    }
+    always {
+      echo "Build finished."
+    }
+  }
+}
