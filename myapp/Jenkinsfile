@@ -8,38 +8,26 @@ pipeline {
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Build') {
             steps {
-                script {
-                    sh 'docker build -t myapp:${BUILD_NUMBER} -t myapp:latest .'
-                }
+                echo 'Building the application...'
+                // If you have requirements.txt:
+                // sh 'pip install -r requirements.txt'
             }
         }
 
-        stage('Stop Old Container') {
+        stage('Test') {
             steps {
-                script {
-                    // Stop and remove old container if running
-                    sh 'docker ps -q --filter "name=myapp" | grep -q . && docker stop myapp && docker rm myapp || echo "No existing container"'
-                }
+                echo 'Running tests...'
+                // Example:
+                // sh 'pytest'
             }
         }
 
-        stage('Run Docker Container') {
+        stage('Deploy') {
             steps {
-                script {
-                    sh 'docker run -d --name myapp -p 8080:8080 myapp:latest'
-                }
+                echo 'Deploying the application...'
             }
-        }
-    }
-
-    post {
-        success {
-            echo 'Build & Deployment Successful 🎉'
-        }
-        failure {
-            echo 'Build Failed ❌'
         }
     }
 }
